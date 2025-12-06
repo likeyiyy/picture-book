@@ -20,7 +20,7 @@ export async function POST(request: NextRequest) {
           prompt: body.prompt,
         },
         parameters: {
-          size: '720*406', // 16:9 aspect ratio, lower resolution for web
+          size: '910*512', // 16:9 aspect ratio (910/512 ≈ 16:9), height = 512 (minimum)
           n: 1,
           watermark: false,
         },
