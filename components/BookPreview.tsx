@@ -564,7 +564,7 @@ export function BookPreview({ bookData, isLoading }: BookPreviewProps) {
             id={`pdf-page-${index}`}
             style={{
               width: '910px',
-              minHeight: '683px', // Adjusted for 4:3 aspect ratio (910 * 3/4 = 682.5)
+              minHeight: '512px', // Back to 16:9 aspect ratio (910 * 9/16 = 511.875)
               padding: '20px',
               backgroundColor: 'white',
               marginBottom: '20px'

@@ -81,7 +81,7 @@ export async function POST(request: NextRequest) {
           prompt: enhancedPrompt,
         },
         parameters: {
-          size: '1024*768', // 4:3 aspect ratio, both dimensions within 512-1440 range
+          size: '1440*810', // 16:9 aspect ratio, both dimensions within 512-1440 range, max pixels
           n: 1,
           style: '<auto>', // 使用自动风格
         },
