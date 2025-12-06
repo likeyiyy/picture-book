@@ -1,11 +1,9 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronLeft, ChevronRight, Image as ImageIcon, Loader2, CheckCircle, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import jsPDF from 'jspdf';
-import html2canvas from 'html2canvas';
 
 interface Page {
   pageNumber: number;
@@ -32,9 +30,7 @@ export function BookPreview({ bookData, isLoading }: BookPreviewProps) {
   const [currentPage, setCurrentPage] = useState(0);
   const [pages, setPages] = useState<Page[]>([]);
   const [hasStartedGeneration, setHasStartedGeneration] = useState(false);
-  const [isExportingPDF, setIsExportingPDF] = useState(false);
   const hasContent = bookData.title || pages.length > 0;
-  const pdfContentRef = useRef<HTMLDivElement>(null);
 
   // 检查是否所有图片都已生成
   const allImagesGenerated = pages.length > 0 &&
@@ -191,141 +187,110 @@ export function BookPreview({ bookData, isLoading }: BookPreviewProps) {
     setCurrentPage((prev) => Math.min(pages.length - 1, prev + 1));
   };
 
-  // 导出 PDF 功能
-  const exportToPDF = async () => {
-    if (!pdfContentRef.current || pages.length === 0) return;
+  // 使用浏览器打印功能
+  const handlePrint = () => {
+    // 创建一个新窗口用于打印
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) return;
 
-    setIsExportingPDF(true);
-
-    try {
-      // 等待所有图片加载完成
-      const waitForImages = () => {
-        return new Promise((resolve) => {
-          const images = pdfContentRef.current?.querySelectorAll('img') || [];
-          if (images.length === 0) {
-            resolve(null);
-            return;
-          }
-
-          let loadedCount = 0;
-          const totalImages = images.length;
-
-          images.forEach((img) => {
-            const imageElement = img as HTMLImageElement;
-            if (imageElement.complete) {
-              loadedCount++;
-            } else {
-              imageElement.onload = () => {
-                loadedCount++;
-                if (loadedCount === totalImages) {
-                  resolve(null);
-                }
-              };
-              imageElement.onerror = () => {
-                loadedCount++;
-                if (loadedCount === totalImages) {
-                  resolve(null);
-                }
-              };
+    // 生成打印内容的 HTML
+    const printContent = `
+      <!DOCTYPE html>
+      <html lang="zh-CN">
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>${bookData.title || '绘本'} - 打印预览</title>
+        <style>
+          @media print {
+            @page {
+              size: A4 landscape;
+              margin: 1cm;
             }
-          });
-
-          if (loadedCount === totalImages) {
-            resolve(null);
+            body {
+              margin: 0;
+              padding: 0;
+            }
+            .page-break {
+              page-break-before: always;
+            }
+            .no-print {
+              display: none;
+            }
           }
-        });
-      };
-
-      // 等待图片加载
-      await waitForImages();
-
-      const pdf = new jsPDF({
-        orientation: 'landscape',
-        unit: 'mm',
-        format: 'a4'
-      });
-
-      // 添加标题页
-      if (bookData.title) {
-        pdf.setFontSize(24);
-        pdf.text(bookData.title, pdf.internal.pageSize.getWidth() / 2, 50, { align: 'center' });
-
-        pdf.setFontSize(12);
-        pdf.text(`共 ${pages.length} 页`, pdf.internal.pageSize.getWidth() / 2, 70, { align: 'center' });
-
-        // 添加一页空白
-        pdf.addPage();
-      }
-
-      // 为每一页生成 PDF
-      for (let i = 0; i < pages.length; i++) {
-        const pageElement = document.getElementById(`pdf-page-${i}`);
-
-        if (pageElement) {
-          // 等待一小段时间确保渲染完成
-          await new Promise(resolve => setTimeout(resolve, 100));
-
-          // 先加载图片
-          const imgElements = pageElement.getElementsByTagName('img');
-          const imgPromises = Array.from(imgElements).map((img) => {
-            return new Promise((resolve, reject) => {
-              const imgElement = img as HTMLImageElement;
-              if (imgElement.complete) {
-                resolve(null);
-              } else {
-                imgElement.onload = () => resolve(null);
-                imgElement.onerror = () => reject(new Error('Image load failed'));
-              }
-            });
-          });
-
-          // 等待所有图片加载完成
-          await Promise.all(imgPromises);
-
-          // 使用 html2canvas 捕获页面
-          const canvas = await html2canvas(pageElement, {
-            scale: 2,
-            useCORS: true,
-            backgroundColor: '#ffffff',
-            allowTaint: false, // 改为 false 以避免 CORS 问题
-            logging: false,
-            imageTimeout: 30000, // 30秒超时
-            foreignObjectRendering: false // 禁用外部对象渲染
-          });
-
-          const imgData = canvas.toDataURL('image/png');
-
-          // 计算图片在 PDF 中的尺寸
-          const pdfWidth = pdf.internal.pageSize.getWidth();
-          const pdfHeight = pdf.internal.pageSize.getHeight();
-          const imgWidth = canvas.width;
-          const imgHeight = canvas.height;
-          const ratio = Math.min(pdfWidth / imgWidth, pdfHeight / imgHeight) * 200;
-
-          const imgX = (pdfWidth - imgWidth * ratio / 200) / 2;
-          const imgY = 20;
-
-          if (i > 0) {
-            pdf.addPage();
+          body {
+            font-family: 'Microsoft YaHei', 'PingFang SC', 'SimHei', sans-serif;
+            background: white;
           }
+          .print-page {
+            width: 100%;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            page-break-after: always;
+          }
+          .title-page {
+            text-align: center;
+          }
+          .title-page h1 {
+            font-size: 48px;
+            margin-bottom: 20px;
+          }
+          .title-page p {
+            font-size: 20px;
+            color: #666;
+          }
+          .content-page {
+            width: 100%;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+          }
+          .page-image {
+            width: 100%;
+            height: auto;
+            margin-bottom: 20px;
+          }
+          .page-text {
+            font-size: 24px;
+            text-align: center;
+            line-height: 1.6;
+          }
+          .page-number {
+            position: fixed;
+            bottom: 10px;
+            right: 10px;
+            font-size: 12px;
+            color: #999;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="title-page print-page">
+          <h1>${bookData.title || '绘本故事'}</h1>
+          <p>共 ${pages.length} 页</p>
+        </div>
+        ${pages.map((page, index) => `
+          <div class="content-page print-page">
+            ${page.imageUrl ? `<img src="${page.imageUrl}" alt="第 ${index + 1} 页" class="page-image" /> : ''}
+            <div class="page-text">${page.text}</div>
+          </div>
+        `).join('')}
+      </body>
+      </html>
+    `;
 
-          pdf.addImage(imgData, 'PNG', imgX, imgY, imgWidth * ratio / 200, imgHeight * ratio / 200);
+    // 写入内容
+    printWindow.document.write(printContent);
+    printWindow.document.close();
 
-          // 添加页码
-          pdf.setFontSize(10);
-          pdf.text(`第 ${i + 1} 页`, pdfWidth - 20, pdfHeight - 10, { align: 'right' });
-        }
-      }
-
-      // 下载 PDF
-      const fileName = `${bookData.title || '绘本'}_${new Date().toISOString().slice(0, 10)}.pdf`;
-      pdf.save(fileName);
-
-    } catch (error) {
-      console.error('导出 PDF 失败:', error);
-    } finally {
-      setIsExportingPDF(false);
-    }
+    // 等待内容加载完成后打印
+    printWindow.onload = () => {
+      printWindow.print();
+      printWindow.close();
+    };
   };
 
   if (!hasContent && !isLoading) {
@@ -349,25 +314,15 @@ export function BookPreview({ bookData, isLoading }: BookPreviewProps) {
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold text-gray-900">绘本预览</h2>
           <div className="flex items-center gap-2">
-            {allImagesGenerated && pages.length > 0 && (
+            {pages.length > 0 && (
               <Button
                 variant="outline"
                 size="sm"
-                onClick={exportToPDF}
-                disabled={isExportingPDF}
+                onClick={handlePrint}
                 className="flex items-center gap-2"
               >
-                {isExportingPDF ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    <span>导出中...</span>
-                  </>
-                ) : (
-                  <>
-                    <Download className="w-4 h-4" />
-                    <span>导出 PDF</span>
-                  </>
-                )}
+                <Download className="w-4 h-4" />
+                <span>打印/导出 PDF</span>
               </Button>
             )}
             {isLoading && (
@@ -574,58 +529,6 @@ export function BookPreview({ bookData, isLoading }: BookPreviewProps) {
         </div>
       </div>
 
-      {/* 隐藏的 PDF 导出容器 */}
-      <div ref={pdfContentRef} style={{ position: 'absolute', left: '-9999px', top: '-9999px', visibility: 'hidden' }}>
-        {pages.map((page, index) => (
-          <div
-            key={index}
-            id={`pdf-page-${index}`}
-            style={{
-              width: '910px',
-              minHeight: '512px', // Back to 16:9 aspect ratio (910 * 9/16 = 511.875)
-              padding: '20px',
-              backgroundColor: 'white',
-              marginBottom: '20px'
-            }}
-          >
-            {/* 页码标题 */}
-            <div style={{
-              textAlign: 'center',
-              marginBottom: '10px',
-              fontSize: '14px',
-              fontWeight: 'bold'
-            }}>
-              第 {page.pageNumber} 页
-            </div>
-
-            {/* 图像 */}
-            {page.imageUrl && (
-              <div style={{ marginBottom: '10px' }}>
-                <img
-                  src={page.imageUrl}
-                  alt={`第 ${page.pageNumber} 页插画`}
-                  crossOrigin="anonymous"
-                  style={{
-                    width: '100%',
-                    height: 'auto',
-                    borderRadius: '8px'
-                  }}
-                />
-              </div>
-            )}
-
-            {/* 文本 */}
-            <div style={{
-              fontSize: '16px',
-              lineHeight: '1.5',
-              textAlign: 'center',
-              color: '#333'
-            }}>
-              {page.text}
-            </div>
-          </div>
-        ))}
       </div>
-    </div>
   );
 }
