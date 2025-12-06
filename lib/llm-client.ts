@@ -9,27 +9,50 @@ const openaiProvider = createOpenAI({
   baseURL: 'https://openrouter.ai/api/v1',
 });
 
-// DeepSeek 模型
-const DEEPSEEK_MODEL = 'deepseek/deepseek-v3.2';
+// Gemini 模型
+const GEMINI_MODEL = 'google/gemini-2.0-flash-001';
 
 export async function generateStoryStructured(prompt: string): Promise<StoryType> {
   // 如果没有配置 API Key，返回模拟数据用于测试
   if (!process.env.OPENROUTER_API_KEY || process.env.OPENROUTER_API_KEY === 'your_openrouter_api_key_here') {
     console.log('No API key configured, returning mock data for testing');
+    console.log('Prompt would be:', prompt);
     return getMockStory(prompt);
   }
 
+  console.log('\n=== AI Story Generation ===');
+  console.log('Model:', GEMINI_MODEL);
+  console.log('Prompt length:', prompt.length, 'characters');
+  console.log('Prompt:\n', prompt);
+  console.log('\n--- Sending request to AI ---\n');
+
+  const startTime = Date.now();
+
   try {
     const { object } = await generateObject({
-      model: openaiProvider(DEEPSEEK_MODEL),
+      model: openaiProvider(GEMINI_MODEL),
       prompt: prompt,
       schema: StorySchema,
       temperature: 0.8,
     });
 
+    const endTime = Date.now();
+    const duration = endTime - startTime;
+
+    console.log('\n--- AI Response ---');
+    console.log('Response time:', duration, 'ms');
+    console.log('Generated story:', JSON.stringify(object, null, 2));
+    console.log('=== End AI Story Generation ===\n');
+
     return object as StoryType;
   } catch (error) {
+    const endTime = Date.now();
+    const duration = endTime - startTime;
+
+    console.error('\n--- Error after', duration, 'ms ---');
     console.error('Error generating story:', error);
+    console.error('=== End AI Story Generation ===\n');
+
     throw new Error('Failed to generate story. Please try again.');
   }
 }

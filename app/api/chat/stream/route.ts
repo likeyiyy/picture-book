@@ -113,6 +113,10 @@ async function generateBookStream(
   // 生成提示词
   const prompt = generateStoryPrompt(params);
 
+  console.log('\n=== Stream Route generateBookStream ===');
+  console.log('Params:', JSON.stringify(params, null, 2));
+  console.log('Prompt preview:', prompt.substring(0, 200) + '...');
+
   // 更新生成状态
   controller.enqueue(encoder.encode(`data: ${JSON.stringify({
     type: 'book_update',
@@ -123,9 +127,15 @@ async function generateBookStream(
   })}\n\n`));
 
   // 调用 LLM 生成故事
+  const startTime = Date.now();
   try {
     // 直接使用 structured output 获取结构化数据
     const storyData = await generateStoryStructured(prompt);
+    const endTime = Date.now();
+
+    console.log('Story generation time in stream:', endTime - startTime, 'ms');
+    console.log('Generated pages:', storyData.pages.length);
+    console.log('=== End Stream Route generateBookStream ===\n');
 
     // 逐页发送更新
     controller.enqueue(encoder.encode(`data: ${JSON.stringify({

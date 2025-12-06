@@ -3,75 +3,77 @@ import axios from 'axios';
 import { GenerateImageRequest, ApiResponse } from '@/types';
 
 const WANXIANG_API_KEY = process.env.WANXIANG_API_KEY;
+// 使用通义万相2.5文生图API
 const WANXIANG_API_URL = 'https://dashscope.aliyuncs.com/api/v1/services/aigc/text2image/image-synthesis';
 
 export async function POST(request: NextRequest) {
   try {
     const body: GenerateImageRequest = await request.json();
+    let imageUrl: string | null = null;
 
-    // 调用阿里云通义万相 API 生成图片
+    // 调用阿里云通义万相 API 生成图片（使用 wan2.2-t2i-flash 模型）
     const response = await axios.post(
       WANXIANG_API_URL,
       {
-        model: 'wanx-v1',
+        model: 'wan2.2-t2i-flash',
         input: {
           prompt: body.prompt,
         },
         parameters: {
-          size: body.size === 'square' ? '1024*1024' :
-                body.size === 'landscape' ? '1024*576' :
-                '720*1280',
+          size: '720*406', // 16:9 aspect ratio, lower resolution for web
           n: 1,
-          seed: Math.floor(Math.random() * 1000000),
+          watermark: false,
         },
       },
       {
         headers: {
           'Authorization': `Bearer ${WANXIANG_API_KEY}`,
           'Content-Type': 'application/json',
-          'X-DashScope-Async': 'enable', // 启用异步模式
+          'X-DashScope-Async': 'enable',
         },
       }
     );
 
-    // 获取任务 ID
-    const taskId = response.data.output.task_id;
+    // 检查响应
+    if (response.data.output?.task_id) {
+      // 异步模式，需要轮询获取结果
+      const taskId = response.data.output.task_id;
+      let attempts = 0;
+      const maxAttempts = 30;
 
-    if (!taskId) {
-      throw new Error('Failed to get task ID');
-    }
+      while (!imageUrl && attempts < maxAttempts) {
+        await new Promise(resolve => setTimeout(resolve, 2000)); // 等待 2 秒
 
-    // 轮询获取结果
-    let imageUrl = null;
-    let attempts = 0;
-    const maxAttempts = 30;
+        const resultResponse = await axios.get(
+          `https://dashscope.aliyuncs.com/api/v1/tasks/${taskId}`,
+          {
+            headers: {
+              'Authorization': `Bearer ${WANXIANG_API_KEY}`,
+            },
+          }
+        );
 
-    while (!imageUrl && attempts < maxAttempts) {
-      await new Promise(resolve => setTimeout(resolve, 2000)); // 等待 2 秒
+        const taskStatus = resultResponse.data.output?.task_status;
 
-      const resultResponse = await axios.get(
-        `https://dashscope.aliyuncs.com/api/v1/tasks/${taskId}`,
-        {
-          headers: {
-            'Authorization': `Bearer ${WANXIANG_API_KEY}`,
-          },
+        if (taskStatus === 'SUCCEEDED') {
+          imageUrl = resultResponse.data.output.results[0].url;
+          break;
+        } else if (taskStatus === 'FAILED') {
+          console.error('Task failed:', resultResponse.data);
+          throw new Error('Image generation failed');
         }
-      );
 
-      const taskStatus = resultResponse.data.output.task_status;
-
-      if (taskStatus === 'SUCCEEDED') {
-        imageUrl = resultResponse.data.output.results[0].url;
-        break;
-      } else if (taskStatus === 'FAILED') {
-        throw new Error('Image generation failed');
+        attempts++;
       }
 
-      attempts++;
-    }
-
-    if (!imageUrl) {
-      throw new Error('Image generation timeout');
+      if (!imageUrl) {
+        throw new Error('Image generation timeout');
+      }
+    } else if (response.data.output?.results?.[0]?.url) {
+      // 同步模式，直接返回结果
+      let imageUrl = response.data.output.results[0].url;
+    } else {
+      throw new Error('Unexpected response format');
     }
 
     // 返回成功响应

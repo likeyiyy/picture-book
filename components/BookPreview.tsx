@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronLeft, ChevronRight, Image as ImageIcon, Loader2, CheckCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -9,6 +9,9 @@ interface Page {
   pageNumber: number;
   text: string;
   imagePrompt?: string;
+  imageUrl?: string;
+  isGeneratingImage?: boolean;
+  imageError?: string;
 }
 
 interface BookData {
@@ -25,8 +28,131 @@ interface BookPreviewProps {
 
 export function BookPreview({ bookData, isLoading }: BookPreviewProps) {
   const [currentPage, setCurrentPage] = useState(0);
-  const pages = bookData.pages || [];
+  const [pages, setPages] = useState<Page[]>([]);
+  const [hasStartedGeneration, setHasStartedGeneration] = useState(false);
   const hasContent = bookData.title || pages.length > 0;
+
+  // 当 bookData.pages 更新时，更新本地的 pages 状态
+  useEffect(() => {
+    setPages(bookData.pages || []);
+  }, [bookData.pages]);
+
+  // 生成图像（带重试逻辑）
+  const generateImage = async (prompt: string, pageIndex: number, retryCount = 0) => {
+    const maxRetries = 3;
+
+    // 更新页面状态为正在生成图像
+    setPages(prev => prev.map((page, index) =>
+      index === pageIndex
+        ? { ...page, isGeneratingImage: true, imageError: undefined }
+        : page
+    ));
+
+    try {
+      const response = await fetch('/api/generate/image', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          prompt: `儿童绘本插画风格，卡通风格，${prompt}，温馨可爱的儿童图书插图，简约线条，柔和色彩，适合儿童阅读的绘本风格`,
+          style: '<auto>',
+          size: 'landscape'
+        }),
+      });
+
+      const result = await response.json();
+
+      if (result.success && result.data?.url) {
+        // 更新页面图像URL
+        setPages(prev => {
+          const updated = prev.map((page, index) =>
+            index === pageIndex
+              ? { ...page, imageUrl: result.data.url, isGeneratingImage: false, imageError: undefined }
+              : page
+          );
+          // 检查是否所有图片都已生成
+          const allGenerated = updated.every(page => !page.imagePrompt || page.imageUrl);
+          if (allGenerated) {
+            setHasStartedGeneration(false);
+          }
+          return updated;
+        });
+      } else {
+        console.error('Failed to generate image:', result.error);
+
+        // 如果是速率限制错误且还有重试次数，则延迟后重试
+        if (result.error?.includes('429') || result.error?.includes('rate limit')) {
+          if (retryCount < maxRetries) {
+            // 指数退避延迟
+            const delay = Math.pow(2, retryCount) * 5000; // 5s, 10s, 20s
+            setTimeout(() => {
+              generateImage(prompt, pageIndex, retryCount + 1);
+            }, delay);
+            return;
+          } else {
+            // 超过重试次数，显示错误信息
+            setPages(prev => prev.map((page, index) =>
+              index === pageIndex
+                ? {
+                    ...page,
+                    isGeneratingImage: false,
+                    imageError: '图像生成失败：API频率限制，请稍后重试'
+                  }
+                : page
+            ));
+          }
+        } else {
+          // 其他错误
+          setPages(prev => prev.map((page, index) =>
+            index === pageIndex
+              ? {
+                  ...page,
+                  isGeneratingImage: false,
+                  imageError: result.error || '图像生成失败'
+                }
+              : page
+          ));
+        }
+      }
+    } catch (error) {
+      console.error('Error generating image:', error);
+      setPages(prev => prev.map((page, index) =>
+        index === pageIndex
+          ? {
+              ...page,
+              isGeneratingImage: false,
+              imageError: '网络错误，请检查连接'
+            }
+          : page
+      ));
+    }
+  };
+
+  // 当页面有 imagePrompt 但没有 imageUrl 时，自动生成图像
+  useEffect(() => {
+    if (isLoading || hasStartedGeneration) return;
+
+    // 检查是否有需要生成的图片
+    const hasPendingImages = pages.some(page => page.imagePrompt && !page.imageUrl);
+    if (!hasPendingImages) return;
+
+    setHasStartedGeneration(true);
+
+    // 添加延迟以避免速率限制
+    const generateImagesWithDelay = async () => {
+      for (let i = 0; i < pages.length; i++) {
+        const page = pages[i];
+        if (page.imagePrompt && !page.imageUrl && !page.isGeneratingImage) {
+          // 为每一页添加延迟，避免请求过于频繁
+          await new Promise(resolve => setTimeout(resolve, 5000 * i)); // 增加延迟到5秒
+          generateImage(page.imagePrompt, i);
+        }
+      }
+    };
+
+    generateImagesWithDelay();
+  }, [pages, isLoading, hasStartedGeneration]);
 
   const goToPreviousPage = () => {
     setCurrentPage((prev) => Math.max(0, prev - 1));
@@ -94,11 +220,67 @@ export function BookPreview({ bookData, isLoading }: BookPreviewProps) {
 
                 {/* 内容区 */}
                 <div className="p-6">
+                  {/* 图像显示 */}
+                  {pages[currentPage].imageUrl && (
+                    <motion.div
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      transition={{ delay: 0.1 }}
+                      className="mb-4"
+                    >
+                      <img
+                        src={pages[currentPage].imageUrl}
+                        alt={`第 ${currentPage + 1} 页插画`}
+                        className="w-full rounded-lg shadow-md"
+                      />
+                    </motion.div>
+                  )}
+
+                  {/* 图像生成中 */}
+                  {pages[currentPage].isGeneratingImage && (
+                    <motion.div
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      transition={{ delay: 0.1 }}
+                      className="mb-4 bg-gray-100 rounded-lg p-8 flex flex-col items-center justify-center"
+                    >
+                      <Loader2 className="w-12 h-12 text-blue-600 animate-spin mb-4" />
+                      <p className="text-gray-600">正在生成插画...</p>
+                    </motion.div>
+                  )}
+
+                  {/* 图像生成失败 */}
+                  {pages[currentPage].imageError && !pages[currentPage].imageUrl && !pages[currentPage].isGeneratingImage && (
+                    <motion.div
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      transition={{ delay: 0.1 }}
+                      className="mb-4 bg-red-50 rounded-lg p-6"
+                    >
+                      <div className="flex flex-col items-center text-center">
+                        <ImageIcon className="w-12 h-12 text-red-400 mb-3" />
+                        <p className="text-red-600 mb-3">{pages[currentPage].imageError}</p>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            if (pages[currentPage].imagePrompt) {
+                              generateImage(pages[currentPage].imagePrompt!, currentPage);
+                            }
+                          }}
+                          className="text-red-600 border-red-300 hover:bg-red-100"
+                        >
+                          重试生成
+                        </Button>
+                      </div>
+                    </motion.div>
+                  )}
+
                   {/* 文本内容 */}
                   <motion.div
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
-                    transition={{ delay: 0.1 }}
+                    transition={{ delay: 0.2 }}
                     className="mb-4"
                   >
                     <p className="text-lg text-gray-800 leading-relaxed">
@@ -106,12 +288,12 @@ export function BookPreview({ bookData, isLoading }: BookPreviewProps) {
                     </p>
                   </motion.div>
 
-                  {/* 插画提示 */}
-                  {pages[currentPage].imagePrompt && (
+                  {/* 插画提示（仅在未生成图像时显示） */}
+                  {!pages[currentPage].imageUrl && !pages[currentPage].isGeneratingImage && pages[currentPage].imagePrompt && (
                     <motion.div
                       initial={{ opacity: 0 }}
                       animate={{ opacity: 1 }}
-                      transition={{ delay: 0.2 }}
+                      transition={{ delay: 0.3 }}
                       className="bg-gray-50 rounded-lg p-4"
                     >
                       <div className="flex items-center gap-2 text-sm text-gray-600 mb-2">
