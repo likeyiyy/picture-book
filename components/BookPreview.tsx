@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronLeft, ChevronRight, Image as ImageIcon, Loader2, CheckCircle, Download } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Image as ImageIcon, Loader2, CheckCircle, Download, Printer, Eye } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 interface Page {
@@ -187,14 +187,9 @@ export function BookPreview({ bookData, isLoading }: BookPreviewProps) {
     setCurrentPage((prev) => Math.min(pages.length - 1, prev + 1));
   };
 
-  // 使用浏览器打印功能
-  const handlePrint = () => {
-    // 创建一个新窗口用于打印
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) return;
-
-    // 生成打印内容的 HTML
-    const printContent = `
+  // 构建打印页面内容
+  const buildPrintContent = () => {
+    let content = `
       <!DOCTYPE html>
       <html lang="zh-CN">
       <head>
@@ -211,25 +206,36 @@ export function BookPreview({ bookData, isLoading }: BookPreviewProps) {
               margin: 0;
               padding: 0;
             }
-            .page-break {
-              page-break-before: always;
-            }
             .no-print {
-              display: none;
+              display: none !important;
             }
           }
           body {
             font-family: 'Microsoft YaHei', 'PingFang SC', 'SimHei', sans-serif;
             background: white;
+            margin: 0;
+            padding: 20px;
+          }
+          .print-header {
+            text-align: center;
+            margin-bottom: 30px;
+            padding: 20px;
+            background: #f5f5f5;
+            border-radius: 8px;
+          }
+          .print-actions {
+            margin-bottom: 20px;
+            text-align: center;
           }
           .print-page {
             width: 100%;
-            height: 100vh;
+            min-height: calc(100vh - 200px);
             display: flex;
             flex-direction: column;
             justify-content: center;
             align-items: center;
             page-break-after: always;
+            margin-bottom: 40px;
           }
           .title-page {
             text-align: center;
@@ -237,6 +243,7 @@ export function BookPreview({ bookData, isLoading }: BookPreviewProps) {
           .title-page h1 {
             font-size: 48px;
             margin-bottom: 20px;
+            color: #333;
           }
           .title-page p {
             font-size: 20px;
@@ -247,49 +254,111 @@ export function BookPreview({ bookData, isLoading }: BookPreviewProps) {
             max-width: 800px;
             margin: 0 auto;
             padding: 20px;
+            box-sizing: border-box;
           }
           .page-image {
             width: 100%;
             height: auto;
             margin-bottom: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
           }
           .page-text {
             font-size: 24px;
             text-align: center;
             line-height: 1.6;
+            color: #333;
           }
           .page-number {
-            position: fixed;
-            bottom: 10px;
-            right: 10px;
-            font-size: 12px;
-            color: #999;
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            font-size: 14px;
+            color: #666;
           }
         </style>
       </head>
       <body>
+        <div class="print-header no-print">
+          <h1>${bookData.title || '绘本故事'} - 打印预览</h1>
+          <p>共 ${pages.length} 页</p>
+        </div>
+        <div class="print-actions no-print">
+          <button onclick="window.print()" style="
+            padding: 10px 20px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-right: 10px;
+          ">
+            打印
+          </button>
+          <button onclick="window.close()" style="
+            padding: 10px 20px;
+            background: #6c757d;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+          ">
+            关闭
+          </button>
+        </div>
         <div class="title-page print-page">
           <h1>${bookData.title || '绘本故事'}</h1>
           <p>共 ${pages.length} 页</p>
         </div>
-        ${pages.map((page, index) => `
-          <div class="content-page print-page">
-            ${page.imageUrl ? `<img src="${page.imageUrl}" alt="第 ${index + 1} 页" class="page-image" /> : ''}
-            <div class="page-text">${page.text}</div>
-          </div>
-        `).join('')}
+    `;
+
+    // 添加每一页的内容
+    content += pages.map((page, index) => `
+      <div class="content-page print-page" style="position: relative;">
+        ${page.imageUrl ? `<img src="${page.imageUrl}" alt="第 ${index + 1} 页" class="page-image" />` : ''}
+        <div class="page-text">${page.text}</div>
+        <div class="page-number">第 ${index + 1} 页</div>
+      </div>
+    `).join('');
+
+    content += `
       </body>
       </html>
     `;
 
+    return content;
+  };
+
+  // 预览功能
+  const handlePreview = () => {
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) return;
+
+    const content = buildPrintContent();
+
     // 写入内容
-    printWindow.document.write(printContent);
+    printWindow.document.write(content);
+    printWindow.document.close();
+  };
+
+  // 打印功能
+  const handlePrint = () => {
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) return;
+
+    const content = buildPrintContent();
+
+    // 写入内容
+    printWindow.document.write(content);
     printWindow.document.close();
 
     // 等待内容加载完成后打印
     printWindow.onload = () => {
-      printWindow.print();
-      printWindow.close();
+      setTimeout(() => {
+        printWindow.print();
+      }, 500);
     };
   };
 
@@ -315,15 +384,26 @@ export function BookPreview({ bookData, isLoading }: BookPreviewProps) {
           <h2 className="text-lg font-semibold text-gray-900">绘本预览</h2>
           <div className="flex items-center gap-2">
             {pages.length > 0 && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handlePrint}
-                className="flex items-center gap-2"
-              >
-                <Download className="w-4 h-4" />
-                <span>打印/导出 PDF</span>
-              </Button>
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handlePreview}
+                  className="flex items-center gap-2"
+                >
+                  <Eye className="w-4 h-4" />
+                  <span>预览</span>
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handlePrint}
+                  className="flex items-center gap-2"
+                >
+                  <Printer className="w-4 h-4" />
+                  <span>打印/导出 PDF</span>
+                </Button>
+              </>
             )}
             {isLoading && (
               <div className="flex items-center gap-2 text-blue-600">
