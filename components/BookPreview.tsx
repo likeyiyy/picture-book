@@ -1,9 +1,11 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronLeft, ChevronRight, Image as ImageIcon, Loader2, CheckCircle } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Image as ImageIcon, Loader2, CheckCircle, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import jsPDF from 'jspdf';
+import html2canvas from 'html2canvas';
 
 interface Page {
   pageNumber: number;
@@ -30,7 +32,9 @@ export function BookPreview({ bookData, isLoading }: BookPreviewProps) {
   const [currentPage, setCurrentPage] = useState(0);
   const [pages, setPages] = useState<Page[]>([]);
   const [hasStartedGeneration, setHasStartedGeneration] = useState(false);
+  const [isExportingPDF, setIsExportingPDF] = useState(false);
   const hasContent = bookData.title || pages.length > 0;
+  const pdfContentRef = useRef<HTMLDivElement>(null);
 
   // 当 bookData.pages 更新时，更新本地的 pages 状态
   useEffect(() => {
@@ -183,6 +187,78 @@ export function BookPreview({ bookData, isLoading }: BookPreviewProps) {
     setCurrentPage((prev) => Math.min(pages.length - 1, prev + 1));
   };
 
+  // 导出 PDF 功能
+  const exportToPDF = async () => {
+    if (!pdfContentRef.current || pages.length === 0) return;
+
+    setIsExportingPDF(true);
+
+    try {
+      const pdf = new jsPDF({
+        orientation: 'landscape',
+        unit: 'mm',
+        format: 'a4'
+      });
+
+      // 添加标题页
+      if (bookData.title) {
+        pdf.setFontSize(24);
+        pdf.text(bookData.title, pdf.internal.pageSize.getWidth() / 2, 50, { align: 'center' });
+
+        pdf.setFontSize(12);
+        pdf.text(`共 ${pages.length} 页`, pdf.internal.pageSize.getWidth() / 2, 70, { align: 'center' });
+
+        // 添加一页空白
+        pdf.addPage();
+      }
+
+      // 为每一页生成 PDF
+      for (let i = 0; i < pages.length; i++) {
+        const pageElement = document.getElementById(`pdf-page-${i}`);
+
+        if (pageElement) {
+          // 使用 html2canvas 捕获页面
+          const canvas = await html2canvas(pageElement, {
+            scale: 2,
+            useCORS: true,
+            backgroundColor: '#ffffff'
+          });
+
+          const imgData = canvas.toDataURL('image/png');
+
+          // 计算图片在 PDF 中的尺寸
+          const pdfWidth = pdf.internal.pageSize.getWidth();
+          const pdfHeight = pdf.internal.pageSize.getHeight();
+          const imgWidth = canvas.width;
+          const imgHeight = canvas.height;
+          const ratio = Math.min(pdfWidth / imgWidth, pdfHeight / imgHeight) * 200;
+
+          const imgX = (pdfWidth - imgWidth * ratio / 200) / 2;
+          const imgY = 20;
+
+          if (i > 0) {
+            pdf.addPage();
+          }
+
+          pdf.addImage(imgData, 'PNG', imgX, imgY, imgWidth * ratio / 200, imgHeight * ratio / 200);
+
+          // 添加页码
+          pdf.setFontSize(10);
+          pdf.text(`第 ${i + 1} 页`, pdfWidth - 20, pdfHeight - 10, { align: 'right' });
+        }
+      }
+
+      // 下载 PDF
+      const fileName = `${bookData.title || '绘本'}_${new Date().toISOString().slice(0, 10)}.pdf`;
+      pdf.save(fileName);
+
+    } catch (error) {
+      console.error('导出 PDF 失败:', error);
+    } finally {
+      setIsExportingPDF(false);
+    }
+  };
+
   if (!hasContent && !isLoading) {
     return (
       <div className="h-full flex items-center justify-center">
@@ -203,12 +279,35 @@ export function BookPreview({ bookData, isLoading }: BookPreviewProps) {
       <div className="p-4 bg-white border-b border-gray-200">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold text-gray-900">绘本预览</h2>
-          {isLoading && (
-            <div className="flex items-center gap-2 text-blue-600">
-              <Loader2 className="w-4 h-4 animate-spin" />
-              <span className="text-sm">生成中...</span>
-            </div>
-          )}
+          <div className="flex items-center gap-2">
+            {pages.length > 0 && !isLoading && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={exportToPDF}
+                disabled={isExportingPDF}
+                className="flex items-center gap-2"
+              >
+                {isExportingPDF ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>导出中...</span>
+                  </>
+                ) : (
+                  <>
+                    <Download className="w-4 h-4" />
+                    <span>导出 PDF</span>
+                  </>
+                )}
+              </Button>
+            )}
+            {isLoading && (
+              <div className="flex items-center gap-2 text-blue-600">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span className="text-sm">生成中...</span>
+              </div>
+            )}
+          </div>
         </div>
 
         {bookData.title && (
@@ -404,6 +503,58 @@ export function BookPreview({ bookData, isLoading }: BookPreviewProps) {
             </div>
           )}
         </div>
+      </div>
+
+      {/* 隐藏的 PDF 导出容器 */}
+      <div ref={pdfContentRef} style={{ position: 'absolute', left: '-9999px', top: '-9999px' }}>
+        {pages.map((page, index) => (
+          <div
+            key={index}
+            id={`pdf-page-${index}`}
+            style={{
+              width: '910px',
+              minHeight: '512px',
+              padding: '20px',
+              backgroundColor: 'white',
+              marginBottom: '20px'
+            }}
+          >
+            {/* 页码标题 */}
+            <div style={{
+              textAlign: 'center',
+              marginBottom: '10px',
+              fontSize: '14px',
+              fontWeight: 'bold'
+            }}>
+              第 {page.pageNumber} 页
+            </div>
+
+            {/* 图像 */}
+            {page.imageUrl && (
+              <div style={{ marginBottom: '10px' }}>
+                <img
+                  src={page.imageUrl}
+                  alt={`第 ${page.pageNumber} 页插画`}
+                  style={{
+                    width: '100%',
+                    height: 'auto',
+                    borderRadius: '8px'
+                  }}
+                />
+              </div>
+            )}
+
+            {/* 文本 */}
+            <div style={{
+              fontSize: '16px',
+              lineHeight: '1.5',
+              textAlign: 'center',
+              color: '#333'
+            }}>
+              {page.text}
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );
