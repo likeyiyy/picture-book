@@ -72,11 +72,11 @@ export async function POST(request: NextRequest) {
     console.log('Prompt:', enhancedPrompt);
     console.log('=== End Enhanced Prompt ===\n');
 
-    // 调用阿里云通义万相 API 生成图片（使用 wan2.2-t2i-flash 模型）
+    // 调用阿里云通义万相 API 生成图片（使用 wan2.5-t2i-preview 模型）
     const response = await axios.post(
       WANXIANG_API_URL,
       {
-        model: 'wan2.2-t2i-flash',
+        model: 'wan2.5-t2i-preview',
         input: {
           prompt: enhancedPrompt,
         },
