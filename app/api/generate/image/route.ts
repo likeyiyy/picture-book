@@ -81,7 +81,7 @@ export async function POST(request: NextRequest) {
           prompt: enhancedPrompt,
         },
         parameters: {
-          size: '910*512', // 16:9 aspect ratio (910/512 ≈ 16:9), height = 512 (minimum)
+          size: '1024*576', // 16:9 aspect ratio, 589,824 pixels (within required range)
           n: 1,
           watermark: false,
         },
