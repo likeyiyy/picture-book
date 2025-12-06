@@ -31,6 +31,16 @@ export interface GenerateBookRequest {
 
 export interface GenerateImageRequest {
   prompt: string;
+  storyContext?: {
+    title: string;
+    pages: Array<{
+      pageNumber: number;
+      text: string;
+      imagePrompt: string;
+    }>;
+  };
+  currentPage?: number;
+  totalPages?: number;
   style: string;
   size?: 'square' | 'landscape' | 'portrait';
 }

@@ -37,6 +37,21 @@ export function BookPreview({ bookData, isLoading }: BookPreviewProps) {
     setPages(bookData.pages || []);
   }, [bookData.pages]);
 
+  // 构建完整的故事上下文
+  const buildStoryContext = () => {
+    const storyTitle = bookData.title || '绘本故事';
+    const storyPages = pages.map((page, index) => ({
+      pageNumber: index + 1,
+      text: page.text,
+      imagePrompt: page.imagePrompt
+    }));
+
+    return {
+      title: storyTitle,
+      pages: storyPages
+    };
+  };
+
   // 生成图像（带重试逻辑）
   const generateImage = async (prompt: string, pageIndex: number, retryCount = 0) => {
     const maxRetries = 3;
@@ -49,13 +64,19 @@ export function BookPreview({ bookData, isLoading }: BookPreviewProps) {
     ));
 
     try {
+      // 构建完整的故事上下文
+      const storyContext = buildStoryContext();
+
       const response = await fetch('/api/generate/image', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          prompt: `儿童绘本插画风格，卡通风格，${prompt}，温馨可爱的儿童图书插图，简约线条，柔和色彩，适合儿童阅读的绘本风格`,
+          prompt: prompt,
+          storyContext: storyContext,
+          currentPage: pageIndex + 1,
+          totalPages: pages.length,
           style: '<auto>',
           size: 'landscape'
         }),

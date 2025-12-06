@@ -6,10 +6,65 @@ const WANXIANG_API_KEY = process.env.WANXIANG_API_KEY;
 // 使用通义万相2.5文生图API
 const WANXIANG_API_URL = 'https://dashscope.aliyuncs.com/api/v1/services/aigc/text2image/image-synthesis';
 
+// 构建增强的提示词，包含完整故事上下文
+function buildEnhancedPrompt(body: GenerateImageRequest): string {
+  // 如果没有故事上下文，使用原来的提示词
+  if (!body.storyContext || !body.currentPage) {
+    return `儿童绘本插画风格，卡通风格，${body.prompt}，温馨可爱的儿童图书插图，简约线条，柔和色彩，适合儿童阅读的绘本风格`;
+  }
+
+  // 构建故事概要
+  const storySummary = `这是绘本《${body.storyContext.title}》的第${body.currentPage}/${body.totalPages}页插图。
+故事概要：${body.storyContext.pages.map(p => p.text).join('。')}`;
+
+  // 提取角色信息（从所有页面的描述中）
+  const extractCharacterInfo = () => {
+    const allPrompts = body.storyContext!.pages.map(p => p.imagePrompt || '').join(' ');
+    // 简单的角色特征提取逻辑
+    const features = [];
+    if (allPrompts.includes('小猩猩')) features.push('主角是小猩猩，棕色毛发');
+    if (allPrompts.includes('小明')) features.push('主角是小男孩');
+    if (allPrompts.includes('小红')) features.push('主角是小女孩');
+    return features.join('，');
+  };
+
+  // 获取前一页和后一页的上下文
+  const getAdjacentPages = () => {
+    const prevPage = body.storyContext!.pages[body.currentPage! - 2];
+    const nextPage = body.storyContext!.pages[body.currentPage!];
+    let context = '';
+    if (prevPage) context += `前一页：${prevPage.text}。`;
+    if (nextPage) context += `后一页：${nextPage.text}。`;
+    return context;
+  };
+
+  const characterInfo = extractCharacterInfo();
+  const adjacentContext = getAdjacentPages();
+
+  // 构建完整的增强提示词
+  return `${storySummary}
+${characterInfo ? `角色特征：${characterInfo}。` : ''}
+${adjacentContext}
+当前页面描述：${body.prompt}
+
+风格要求：儿童绘本插画风格，卡通风格，温馨可爱的儿童图书插图，简约线条，柔和色彩，适合儿童阅读。
+请确保角色在整个绘本中保持一致性，包括外貌、服装和颜色。`;
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body: GenerateImageRequest = await request.json();
     let imageUrl: string | null = null;
+
+    // 构建增强的提示词，包含完整故事上下文
+    const enhancedPrompt = buildEnhancedPrompt(body);
+
+    // 调试：打印增强的提示词
+    console.log('\n=== Enhanced Image Prompt ===');
+    console.log(`Page ${body.currentPage}/${body.totalPages}`);
+    console.log('Prompt length:', enhancedPrompt.length, 'characters');
+    console.log('Prompt:', enhancedPrompt);
+    console.log('=== End Enhanced Prompt ===\n');
 
     // 调用阿里云通义万相 API 生成图片（使用 wan2.2-t2i-flash 模型）
     const response = await axios.post(
@@ -17,7 +72,7 @@ export async function POST(request: NextRequest) {
       {
         model: 'wan2.2-t2i-flash',
         input: {
-          prompt: body.prompt,
+          prompt: enhancedPrompt,
         },
         parameters: {
           size: '910*512', // 16:9 aspect ratio (910/512 ≈ 16:9), height = 512 (minimum)
