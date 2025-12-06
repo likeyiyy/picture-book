@@ -36,6 +36,10 @@ export function BookPreview({ bookData, isLoading }: BookPreviewProps) {
   const hasContent = bookData.title || pages.length > 0;
   const pdfContentRef = useRef<HTMLDivElement>(null);
 
+  // 检查是否所有图片都已生成
+  const allImagesGenerated = pages.length > 0 &&
+    pages.every(page => page.imageUrl || !page.imagePrompt);
+
   // 当 bookData.pages 更新时，更新本地的 pages 状态
   useEffect(() => {
     setPages(bookData.pages || []);
@@ -194,6 +198,47 @@ export function BookPreview({ bookData, isLoading }: BookPreviewProps) {
     setIsExportingPDF(true);
 
     try {
+      // 等待所有图片加载完成
+      const waitForImages = () => {
+        return new Promise((resolve) => {
+          const images = pdfContentRef.current?.querySelectorAll('img') || [];
+          if (images.length === 0) {
+            resolve(null);
+            return;
+          }
+
+          let loadedCount = 0;
+          const totalImages = images.length;
+
+          images.forEach((img) => {
+            const imageElement = img as HTMLImageElement;
+            if (imageElement.complete) {
+              loadedCount++;
+            } else {
+              imageElement.onload = () => {
+                loadedCount++;
+                if (loadedCount === totalImages) {
+                  resolve(null);
+                }
+              };
+              imageElement.onerror = () => {
+                loadedCount++;
+                if (loadedCount === totalImages) {
+                  resolve(null);
+                }
+              };
+            }
+          });
+
+          if (loadedCount === totalImages) {
+            resolve(null);
+          }
+        });
+      };
+
+      // 等待图片加载
+      await waitForImages();
+
       const pdf = new jsPDF({
         orientation: 'landscape',
         unit: 'mm',
@@ -217,11 +262,17 @@ export function BookPreview({ bookData, isLoading }: BookPreviewProps) {
         const pageElement = document.getElementById(`pdf-page-${i}`);
 
         if (pageElement) {
+          // 等待一小段时间确保渲染完成
+          await new Promise(resolve => setTimeout(resolve, 100));
+
           // 使用 html2canvas 捕获页面
           const canvas = await html2canvas(pageElement, {
             scale: 2,
             useCORS: true,
-            backgroundColor: '#ffffff'
+            backgroundColor: '#ffffff',
+            allowTaint: true,
+            useCORS: true,
+            logging: false
           });
 
           const imgData = canvas.toDataURL('image/png');
@@ -280,7 +331,7 @@ export function BookPreview({ bookData, isLoading }: BookPreviewProps) {
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold text-gray-900">绘本预览</h2>
           <div className="flex items-center gap-2">
-            {pages.length > 0 && !isLoading && (
+            {allImagesGenerated && pages.length > 0 && (
               <Button
                 variant="outline"
                 size="sm"
@@ -496,7 +547,7 @@ export function BookPreview({ bookData, isLoading }: BookPreviewProps) {
               </div>
             )}
           </div>
-          {pages.length > 0 && !isLoading && (
+          {allImagesGenerated && pages.length > 0 && !isLoading && (
             <div className="flex items-center gap-1 text-green-600">
               <CheckCircle className="w-4 h-4" />
               <span>已完成</span>
@@ -506,7 +557,7 @@ export function BookPreview({ bookData, isLoading }: BookPreviewProps) {
       </div>
 
       {/* 隐藏的 PDF 导出容器 */}
-      <div ref={pdfContentRef} style={{ position: 'absolute', left: '-9999px', top: '-9999px' }}>
+      <div ref={pdfContentRef} style={{ position: 'absolute', left: '-9999px', top: '-9999px', visibility: 'hidden' }}>
         {pages.map((page, index) => (
           <div
             key={index}
@@ -535,6 +586,7 @@ export function BookPreview({ bookData, isLoading }: BookPreviewProps) {
                 <img
                   src={page.imageUrl}
                   alt={`第 ${page.pageNumber} 页插画`}
+                  crossOrigin="anonymous"
                   style={{
                     width: '100%',
                     height: 'auto',
