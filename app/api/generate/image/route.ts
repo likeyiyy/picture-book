@@ -72,18 +72,18 @@ export async function POST(request: NextRequest) {
     console.log('Prompt:', enhancedPrompt);
     console.log('=== End Enhanced Prompt ===\n');
 
-    // 调用阿里云通义万相 API 生成图片（使用 wan2.2-t2i-flash 模型）
+    // 调用阿里云通义万相 API 生成图片（使用 wan2.5-t2i-preview 最强模型）
     const response = await axios.post(
       WANXIANG_API_URL,
       {
-        model: 'wan2.2-t2i-flash',
+        model: 'wan2.5-t2i-preview',
         input: {
           prompt: enhancedPrompt,
         },
         parameters: {
-          size: '1440*810', // 16:9 aspect ratio, both dimensions within 512-1440 range, max pixels
+          size: '1440*810', // 16:9 aspect ratio, max pixels for best quality
           n: 1,
-          style: '<auto>', // 使用自动风格
+          watermark: false,
         },
       },
       {
