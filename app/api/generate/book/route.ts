@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { GenerateBookRequest, ApiResponse } from '@/types';
-import { generateStoryPrompt } from '@/lib/utils';
+import { generateStoryPrompt, generateImagePrompt } from '@/lib/utils';
 import { callLLM } from '@/lib/llm-client';
 
 export async function POST(request: NextRequest) {
