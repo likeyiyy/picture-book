@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback, useLayoutEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Send, Loader2, Sparkles, BookOpen } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -30,33 +30,22 @@ interface ChatInterfaceProps {
 }
 
 export function ChatInterface({ initialMessage }: ChatInterfaceProps = {}) {
-  const [messages, setMessages] = useState<Message[]>(() => {
-    const initial = [
-      {
-        id: '1',
-        role: 'assistant',
-        content: '你好！我是 AI 绘本助手。📚\n\n告诉我你想要创作什么样的故事？比如："一个小猩猩在森林里找妈妈的故事"',
-        timestamp: new Date(),
-      },
-    ];
-
-    if (initialMessage) {
-      initial.push({
-        id: '2',
-        role: 'user',
-        content: initialMessage,
-        timestamp: new Date(),
-      });
-    }
-
-    return initial;
-  });
+  const [messages, setMessages] = useState<Message[]>(() => [
+    {
+      id: '1',
+      role: 'assistant',
+      content: '你好！我是 AI 绘本助手。📚\n\n告诉我你想要创作什么样的故事？比如："一个小猩猩在森林里找妈妈的故事"',
+      timestamp: new Date(),
+    },
+  ]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [bookData, setBookData] = useState<BookData>({});
   const [eventSource, setEventSource] = useState<EventSource | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const messageIdCounter = useRef(0);
+  const hasProcessedInitialMessage = useRef(false);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -66,15 +55,73 @@ export function ChatInterface({ initialMessage }: ChatInterfaceProps = {}) {
     scrollToBottom();
   }, [messages]);
 
-  // 如果有初始消息，自动发送
-  useEffect(() => {
-    if (initialMessage && messages.length === 2) {
-      // 延迟一下让用户看到消息
-      setTimeout(() => {
-        handleSendWithMessage(initialMessage);
-      }, 500);
+  // 创建 EventSource 并处理消息的公共函数
+  const createEventSource = useCallback((messageText: string) => {
+    try {
+      const url = `/api/chat/stream?message=${encodeURIComponent(messageText.trim())}`;
+      console.log('创建 EventSource 连接:', url);
+      
+      const es = new EventSource(url);
+      setEventSource(es);
+
+      es.onopen = () => {
+        console.log('EventSource 连接已打开');
+      };
+
+      es.onmessage = (event) => {
+        console.log('收到 EventSource 消息:', event.data);
+        const data = JSON.parse(event.data);
+
+        if (data.type === 'message') {
+          // 生成唯一的消息 ID
+          messageIdCounter.current += 1;
+          const assistantMessage: Message = {
+            id: `assistant-${Date.now()}-${messageIdCounter.current}`,
+            role: 'assistant',
+            content: data.content,
+            timestamp: new Date(),
+          };
+          setMessages((prev) => [...prev, assistantMessage]);
+        } else if (data.type === 'book_update') {
+          setBookData(data.data);
+        } else if (data.type === 'complete') {
+          console.log('EventSource 完成');
+          es.close();
+          setEventSource(null);
+          setIsLoading(false);
+        } else if (data.type === 'error') {
+          console.error('EventSource 错误:', data.message);
+          es.close();
+          setEventSource(null);
+          setIsLoading(false);
+        }
+      };
+
+      es.onerror = (error) => {
+        console.error('EventSource 连接错误:', error);
+        es.close();
+        setEventSource(null);
+        setIsLoading(false);
+      };
+
+      return es;
+    } catch (error) {
+      console.error('创建 EventSource 时出错:', error);
+      setIsLoading(false);
+      return null;
     }
-  }, [initialMessage]);
+  }, []);
+
+  
+  
+  // 如果有初始消息，自动处理
+  useEffect(() => {
+    if (initialMessage && !hasProcessedInitialMessage.current && messages.length === 1) {
+      hasProcessedInitialMessage.current = true;
+      // 初始消息还没有被添加到列表中，自动发送
+      handleSendWithMessage(initialMessage);
+    }
+  });
 
   const handleSend = async () => {
     await handleSendWithMessage(input);
@@ -83,8 +130,17 @@ export function ChatInterface({ initialMessage }: ChatInterfaceProps = {}) {
   const handleSendWithMessage = async (messageText: string) => {
     if (!messageText.trim() || isLoading) return;
 
+    // 检查是否已经存在相同的消息
+    const lastMessage = messages[messages.length - 1];
+    if (lastMessage && lastMessage.role === 'user' && lastMessage.content === messageText.trim()) {
+      console.log('避免重复发送相同消息');
+      return;
+    }
+
+    // 生成唯一的消息 ID
+    messageIdCounter.current += 1;
     const userMessage: Message = {
-      id: Date.now().toString(),
+      id: `user-${Date.now()}-${messageIdCounter.current}`,
       role: 'user',
       content: messageText.trim(),
       timestamp: new Date(),
@@ -94,40 +150,7 @@ export function ChatInterface({ initialMessage }: ChatInterfaceProps = {}) {
     setInput('');
     setIsLoading(true);
 
-    try {
-      // 创建 EventSource 连接
-      const es = new EventSource(`/api/chat/stream?message=${encodeURIComponent(messageText.trim())}`);
-      setEventSource(es);
-
-      es.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-
-        if (data.type === 'message') {
-          const assistantMessage: Message = {
-            id: Date.now().toString(),
-            role: 'assistant',
-            content: data.content,
-            timestamp: new Date(),
-          };
-          setMessages((prev) => [...prev, assistantMessage]);
-        } else if (data.type === 'book_update') {
-          setBookData(data.data);
-        } else if (data.type === 'complete') {
-          es.close();
-          setEventSource(null);
-          setIsLoading(false);
-        }
-      };
-
-      es.onerror = () => {
-        es.close();
-        setEventSource(null);
-        setIsLoading(false);
-      };
-    } catch (error) {
-      console.error('Error:', error);
-      setIsLoading(false);
-    }
+    createEventSource(messageText);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -144,6 +167,15 @@ export function ChatInterface({ initialMessage }: ChatInterfaceProps = {}) {
     }
     setIsLoading(false);
   };
+
+  // 清理 EventSource 的 effect
+  useEffect(() => {
+    return () => {
+      if (eventSource) {
+        eventSource.close();
+      }
+    };
+  }, [eventSource]);
 
   return (
     <div className="flex h-screen bg-gray-50">
