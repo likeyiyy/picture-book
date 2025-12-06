@@ -265,14 +265,32 @@ export function BookPreview({ bookData, isLoading }: BookPreviewProps) {
           // 等待一小段时间确保渲染完成
           await new Promise(resolve => setTimeout(resolve, 100));
 
+          // 先加载图片
+          const imgElements = pageElement.getElementsByTagName('img');
+          const imgPromises = Array.from(imgElements).map((img) => {
+            return new Promise((resolve, reject) => {
+              const imgElement = img as HTMLImageElement;
+              if (imgElement.complete) {
+                resolve(null);
+              } else {
+                imgElement.onload = () => resolve(null);
+                imgElement.onerror = () => reject(new Error('Image load failed'));
+              }
+            });
+          });
+
+          // 等待所有图片加载完成
+          await Promise.all(imgPromises);
+
           // 使用 html2canvas 捕获页面
           const canvas = await html2canvas(pageElement, {
             scale: 2,
             useCORS: true,
             backgroundColor: '#ffffff',
-            allowTaint: true,
-            useCORS: true,
-            logging: false
+            allowTaint: false, // 改为 false 以避免 CORS 问题
+            logging: false,
+            imageTimeout: 30000, // 30秒超时
+            foreignObjectRendering: false // 禁用外部对象渲染
           });
 
           const imgData = canvas.toDataURL('image/png');
