@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import axios from 'axios';
 import { GenerateImageRequest, ApiResponse } from '@/types';
+import { downloadAndSaveImage } from '@/lib/image-storage';
 
 const WANXIANG_API_KEY = process.env.WANXIANG_API_KEY;
 // 使用通义万相2.5文生图API
@@ -117,7 +118,9 @@ export async function POST(request: NextRequest) {
         const taskStatus = resultResponse.data.output?.task_status;
 
         if (taskStatus === 'SUCCEEDED') {
-          imageUrl = resultResponse.data.output.results[0].url;
+          const remoteImageUrl = resultResponse.data.output.results[0].url;
+          // 下载图片到本地
+          imageUrl = await downloadAndSaveImage(remoteImageUrl);
           break;
         } else if (taskStatus === 'FAILED') {
           console.error('Task failed:', resultResponse.data);
@@ -131,8 +134,9 @@ export async function POST(request: NextRequest) {
         throw new Error('Image generation timeout');
       }
     } else if (response.data.output?.results?.[0]?.url) {
-      // 同步模式，直接返回结果
-      let imageUrl = response.data.output.results[0].url;
+      // 同步模式，下载图片到本地
+      const remoteImageUrl = response.data.output.results[0].url;
+      imageUrl = await downloadAndSaveImage(remoteImageUrl);
     } else {
       throw new Error('Unexpected response format');
     }
