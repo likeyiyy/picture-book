@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { callLLM } from '@/lib/llm-client';
+import { generateStoryStructured } from '@/lib/llm-client';
 import { generateStoryPrompt } from '@/lib/utils';
 
 export async function GET(request: NextRequest) {
@@ -74,7 +74,6 @@ function parseUserInput(message: string): any {
   const params: any = {
     theme: message,
     ageGroup: '4-6', // 默认值
-    pageCount: 5, // 默认值
     artStyle: 'cartoon', // 默认值
     mainCharacter: '主角',
     setting: '森林',
@@ -125,28 +124,8 @@ async function generateBookStream(
 
   // 调用 LLM 生成故事
   try {
-    const content = await callLLM(prompt);
-
-    // 解析故事内容
-    let storyData;
-    try {
-      const jsonMatch = content.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        storyData = JSON.parse(jsonMatch[0]);
-      } else {
-        storyData = JSON.parse(content);
-      }
-    } catch (e) {
-      // 如果解析失败，创建默认结构
-      storyData = {
-        title: '原创故事',
-        pages: Array.from({ length: params.pageCount }, (_, i) => ({
-          pageNumber: i + 1,
-          text: content.slice(i * 100, (i + 1) * 100),
-          imagePrompt: '温馨的儿童插画'
-        }))
-      };
-    }
+    // 直接使用 structured output 获取结构化数据
+    const storyData = await generateStoryStructured(prompt);
 
     // 逐页发送更新
     controller.enqueue(encoder.encode(`data: ${JSON.stringify({

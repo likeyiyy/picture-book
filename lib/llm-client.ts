@@ -1,63 +1,49 @@
-import axios from 'axios';
+import { createOpenAI } from '@ai-sdk/openai';
+import { generateObject } from 'ai';
+import { z } from 'zod';
+import { StorySchema, StoryType } from './schemas';
 
-// OpenRouter API 配置
-const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
-const OPENROUTER_API_URL = process.env.OPENROUTER_API_URL || 'https://openrouter.ai/api/v1';
+// 创建 OpenAI provider（使用默认配置，通过环境变量设置）
+const openaiProvider = createOpenAI({
+  apiKey: process.env.OPENROUTER_API_KEY || 'your_openrouter_api_key_here',
+  baseURL: 'https://openrouter.ai/api/v1',
+});
 
-// 使用固定的 DeepSeek v3.2 模型
+// DeepSeek 模型
 const DEEPSEEK_MODEL = 'deepseek/deepseek-v3.2';
 
-export async function callLLM(prompt: string) {
+export async function generateStoryStructured(prompt: string): Promise<StoryType> {
   // 如果没有配置 API Key，返回模拟数据用于测试
-  if (!OPENROUTER_API_KEY || OPENROUTER_API_KEY === 'your_openrouter_api_key_here') {
+  if (!process.env.OPENROUTER_API_KEY || process.env.OPENROUTER_API_KEY === 'your_openrouter_api_key_here') {
     console.log('No API key configured, returning mock data for testing');
-    return getMockResponse(prompt);
+    return getMockStory(prompt);
   }
 
   try {
-    const response = await axios.post(
-      `${OPENROUTER_API_URL}/chat/completions`,
-      {
-        model: DEEPSEEK_MODEL,
-        messages: [
-          {
-            role: 'system',
-            content: '你是一个专业的儿童绘本作家，擅长创作适合不同年龄段儿童的有趣故事。请严格按照要求的JSON格式返回内容。',
-          },
-          {
-            role: 'user',
-            content: prompt,
-          },
-        ],
-        temperature: 0.8,
-        max_tokens: 2000,
-      },
-      {
-        headers: {
-          'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
-          'Content-Type': 'application/json',
-          'HTTP-Referer': process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000',
-          'X-Title': 'AI Picture Book Generator',
-        },
-      }
-    );
+    const { object } = await generateObject({
+      model: openaiProvider(DEEPSEEK_MODEL),
+      prompt: prompt,
+      schema: StorySchema,
+      temperature: 0.8,
+    });
 
-    return response.data.choices[0].message.content;
+    return object as StoryType;
   } catch (error) {
-    console.error('Error calling OpenRouter API:', error);
-    if (axios.isAxiosError(error)) {
-      const errorDetail = error.response?.data?.error || error.message;
-      throw new Error(`Failed to generate story: ${errorDetail}`);
-    }
+    console.error('Error generating story:', error);
     throw new Error('Failed to generate story. Please try again.');
   }
 }
 
-// 模拟响应函数，用于测试
-function getMockResponse(prompt: string): string {
-  // 根据提示词生成不同的模拟故事
+// 保留旧的调用方式以备兼容
+export async function callLLM(prompt: string): Promise<string> {
+  const story = await generateStoryStructured(prompt);
+  return JSON.stringify(story);
+}
+
+// Mock 数据函数
+function getMockStory(prompt: string): StoryType {
   if (prompt.includes('小猩猩')) {
-    return JSON.stringify({
+    return {
       title: '小猩猩找抱抱',
       pages: [
         {
@@ -86,9 +72,9 @@ function getMockResponse(prompt: string): string {
           imagePrompt: '猩猩妈妈紧紧抱着小猩猩，充满爱意和温暖'
         }
       ]
-    });
+    };
   } else if (prompt.includes('友谊') || prompt.includes('分享')) {
-    return JSON.stringify({
+    return {
       title: '分享的快乐',
       pages: [
         {
@@ -117,10 +103,10 @@ function getMockResponse(prompt: string): string {
           imagePrompt: '小明和一群小朋友一起玩耍，快乐地分享'
         }
       ]
-    });
+    };
   } else {
     // 默认故事
-    return JSON.stringify({
+    return {
       title: '神奇的冒险',
       pages: [
         {
@@ -149,6 +135,6 @@ function getMockResponse(prompt: string): string {
           imagePrompt: '小兔子和小松鼠手拉手走在夕阳下'
         }
       ]
-    });
+    };
   }
 }

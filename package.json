@@ -9,8 +9,10 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@ai-sdk/openai": "^2.0.77",
     "@hookform/resolvers": "^5.2.2",
     "@types/sharp": "^0.31.1",
+    "ai": "^5.0.107",
     "axios": "^1.13.2",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",

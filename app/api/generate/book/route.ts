@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { GenerateBookRequest, ApiResponse } from '@/types';
-import { generateStoryPrompt, generateImagePrompt } from '@/lib/utils';
+import { generateStoryPrompt } from '@/lib/utils';
 import { callLLM } from '@/lib/llm-client';
 
 export async function POST(request: NextRequest) {
@@ -38,11 +38,7 @@ export async function POST(request: NextRequest) {
         pages: Array.from({ length: body.pageCount }, (_, i) => ({
           pageNumber: i + 1,
           text: `这是第${i + 1}页的内容，关于${body.theme}的故事`,
-          imagePrompt: generateImagePrompt(
-            `${body.mainCharacter}在${body.setting}中经历关于${body.theme}的故事`,
-            body.artStyle,
-            body.mainCharacter
-          ),
+          imagePrompt: `儿童绘本插画，${body.artStyle}风格，${body.mainCharacter}在${body.setting}中经历关于${body.theme}的故事`,
         })),
       };
     }
@@ -50,11 +46,7 @@ export async function POST(request: NextRequest) {
     // 为每一页生成图片提示词
     storyData.pages = storyData.pages.map((page: any) => ({
       ...page,
-      imagePrompt: page.imagePrompt || generateImagePrompt(
-        page.text,
-        body.artStyle,
-        body.mainCharacter
-      ),
+      imagePrompt: page.imagePrompt || `儿童绘本插画，${body.artStyle}风格，${page.text}`,
     }));
 
     // 返回成功响应
